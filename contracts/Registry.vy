@@ -14,8 +14,7 @@ struct PoolArray:
     base_pool: address
     coins: address[MAX_COINS]
     ul_coins: address[MAX_COINS]
-    n_coins: uint256  # [coins, underlying coins] tightly packed as uint128[2]
-    name: String[64]
+    n_coins: uint256
     asset_type: uint256
 
 
@@ -531,8 +530,10 @@ def _add_pool(
 ):
     assert _sender == self.owner
     assert _lp_token != ZERO_ADDRESS
-    assert self.pool_data[_pool].coins[0] == ZERO_ADDRESS  # dev: pool exists
-    assert self._get_pool_from_lp_token[_lp_token] == ZERO_ADDRESS
+    assert self.pool_data[_pool].coins[0] == ZERO_ADDRESS, "Pool already added"
+    assert self._get_pool_from_lp_token[_lp_token] == ZERO_ADDRESS, "LP token already added"
+    assert self.factory.get_lp_token(_pool) == ZERO_ADDRESS, "Pool exists in factory"
+    assert self.factory.get_pool_from_lp_token(_lp_token) == ZERO_ADDRESS, "LP token exists in factory"
 
     # add pool to pool_list
     length: uint256 = self._pool_count
@@ -646,19 +647,11 @@ def add_pool(
     )
 
     coins: address[MAX_COINS] = self._get_new_pool_coins(_pool, _n_coins, False)
+    self.pool_data[_pool].ul_coins = coins
 
     decimals: uint256 = self._get_new_pool_decimals(coins, _n_coins)
     self.pool_data[_pool].decimals = decimals
-
-    udecimals: uint256 = 0
-    for i in range(MAX_COINS):
-        if i == _n_coins:
-            break
-        offset: int128 = -8 * convert(i, int128)
-        self.pool_data[_pool].ul_coins[i] = coins[i]
-        udecimals += shift(shift(decimals, offset) % 256, -offset)
-
-    self.pool_data[_pool].underlying_decimals = udecimals
+    self.pool_data[_pool].underlying_decimals = decimals
 
 
 @external
