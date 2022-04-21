@@ -36,6 +36,27 @@ interface CurvePool:
 interface CurveMetapool:
     def base_pool() -> address: view
 
+interface Factory:
+    def find_pool_for_coins(_from: address, _to: address, i: uint256) -> address: view
+    def get_base_pool(_pool: address) -> address: view
+    def get_n_coins(_pool: address) -> uint256: view
+    def get_meta_n_coins(_pool: address) -> (uint256, uint256): view
+    def get_coins(_pool: address) -> address[MAX_COINS]: view
+    def get_underlying_coins(_pool: address) -> address[MAX_COINS]: view
+    def get_decimals(_pool: address) -> uint256[MAX_COINS]: view
+    def get_underlying_decimals(_pool: address) -> uint256[MAX_COINS]: view
+    def get_balances(_pool: address) -> uint256[MAX_COINS]: view
+    def get_underlying_balances(_pool: address) -> uint256[MAX_COINS]: view
+    def get_pool_from_lp_token(_token: address) -> address: view
+    def get_admin_balances(_pool: address) -> uint256[MAX_COINS]: view
+    def get_coin_indices(
+        _pool: address,
+        _from: address,
+        _to: address
+    ) -> (int128, int128, bool): view
+    def is_meta(_pool: address) -> bool: view
+    def get_pool_asset_type(_pool: address) -> uint256: view
+
 
 event PoolAdded:
     pool: indexed(address)
@@ -63,14 +84,15 @@ market_counts: HashMap[uint256, uint256]
 
 last_updated: public(uint256)
 owner: public(address)
-
+factory: public(Factory)
 
 @external
-def __init__():
+def __init__(_factory: Factory):
     """
     @notice Constructor function
     """
     self.owner = msg.sender
+    self.factory = _factory
 
 
 # internal functionality for getters
@@ -200,7 +222,11 @@ def find_pool_for_coins(_from: address, _to: address, i: uint256 = 0) -> address
             this value is used to return the n'th address.
     @return Pool address
     """
+
     key: uint256 = bitwise_xor(convert(_from, uint256), convert(_to, uint256))
+    count: uint256 = self.market_counts[key]
+    if i >= count:
+        return self.factory.find_pool_for_coins(_from, _to, i-count)
     return self.markets[key][i]
 
 
@@ -212,7 +238,10 @@ def get_base_pool(_pool: address) -> address:
     @param _pool Metapool address
     @return Address of base pool
     """
-    return self.pool_data[_pool].base_pool
+    base_pool: address = self.pool_data[_pool].base_pool
+    if base_pool == ZERO_ADDRESS:
+        return self.factory.get_base_pool(_pool)
+    return base_pool
 
 
 @view
@@ -225,8 +254,10 @@ def get_n_coins(_pool: address) -> uint256:
     @param _pool Pool address
     @return Number of wrapped coins, number of underlying coins
     """
-    return self.pool_data[_pool].n_coins
-
+    n_coins: uint256 = self.pool_data[_pool].n_coins
+    if n_coins == 0:
+        return self.factory.get_n_coins(_pool)
+    return n_coins
 
 @view
 @external
@@ -237,6 +268,8 @@ def get_meta_n_coins(_pool: address) -> (uint256, uint256):
     @return Number of wrapped coins, number of underlying coins
     """
     base_pool: address = self.pool_data[_pool].base_pool
+    if base_pool == ZERO_ADDRESS:
+        return self.factory.get_meta_n_coins(_pool)
     return 2, self.pool_data[base_pool].n_coins + 1
 
 
@@ -249,8 +282,11 @@ def get_coins(_pool: address) -> address[MAX_COINS]:
     @param _pool Pool address
     @return List of coin addresses
     """
-    coins: address[MAX_COINS] = empty(address[MAX_COINS])
     n_coins: uint256 = self.pool_data[_pool].n_coins
+    if n_coins == 0:
+        return self.factory.get_coins(_pool)
+
+    coins: address[MAX_COINS] = empty(address[MAX_COINS])
     for i in range(MAX_COINS):
         if i == n_coins:
             break
@@ -268,12 +304,16 @@ def get_underlying_coins(_pool: address) -> address[MAX_COINS]:
     @param _pool Pool address
     @return List of coin addresses
     """
+    base_pool: address = self.pool_data[_pool].base_pool
+    if base_pool == ZERO_ADDRESS:
+        return self.factory.get_underlying_coins(_pool)
+
     coins: address[MAX_COINS] = empty(address[MAX_COINS])
-    n_coins: uint256 = self.pool_data[_pool].n_coins
-    for i in range(MAX_COINS):
-        if i == n_coins:
+    coins[0] = self.pool_data[_pool].coins[0]
+    for i in range(1, MAX_COINS):
+        coins[i] = self.pool_data[base_pool].coins[i - 1]
+        if coins[i] == ZERO_ADDRESS:
             break
-        coins[i] = self.pool_data[_pool].ul_coins[i]
 
     return coins
 
@@ -288,6 +328,8 @@ def get_decimals(_pool: address) -> uint256[MAX_COINS]:
     @return uint256 list of decimals
     """
     n_coins: uint256 = self.pool_data[_pool].n_coins
+    if n_coins == 0:
+        return self.factory.get_decimals(_pool)
     return self._unpack_decimals(self.pool_data[_pool].decimals, n_coins)
 
 
@@ -301,6 +343,8 @@ def get_underlying_decimals(_pool: address) -> uint256[MAX_COINS]:
     @return uint256 list of decimals
     """
     n_coins: uint256 = self.pool_data[_pool].n_coins
+    if n_coins == 0:
+        return self.factory.get_underlying_decimals(_pool)
     return self._unpack_decimals(self.pool_data[_pool].underlying_decimals, n_coins)
 
 
@@ -313,6 +357,8 @@ def get_balances(_pool: address) -> uint256[MAX_COINS]:
     @param _pool Pool address
     @return uint256 list of balances
     """
+    if self.pool_data[_pool].n_coins == 0:
+        return self.factory.get_balances(_pool)
     return self._get_balances(_pool)
 
 
@@ -325,6 +371,9 @@ def get_underlying_balances(_pool: address) -> uint256[MAX_COINS]:
     @param _pool Pool address
     @return uint256 list of underlyingbalances
     """
+    if self.pool_data[_pool].n_coins == 0:
+        return self.factory.get_underlying_balances(_pool)
+
     base_pool: address = self.pool_data[_pool].base_pool
     if base_pool == ZERO_ADDRESS:
         return self._get_balances(_pool)
@@ -339,7 +388,10 @@ def get_virtual_price_from_lp_token(_token: address) -> uint256:
     @param _token LP token address
     @return uint256 Virtual price
     """
-    return CurvePool(self.get_pool_from_lp_token[_token]).get_virtual_price()
+    pool: address = self.get_pool_from_lp_token[_token]
+    if pool == ZERO_ADDRESS:
+        pool = self.factory.get_pool_from_lp_token(_token)
+    return CurvePool(pool).get_virtual_price()
 
 
 @view
@@ -368,8 +420,11 @@ def get_admin_balances(_pool: address) -> uint256[MAX_COINS]:
     @param _pool Pool address
     @return List of uint256 admin balances
     """
-    balances: uint256[MAX_COINS] = self._get_balances(_pool)
     n_coins: uint256 = self.pool_data[_pool].n_coins
+    if n_coins == 0:
+        return self.factory.get_admin_balances(_pool)
+
+    balances: uint256[MAX_COINS] = self._get_balances(_pool)
     for i in range(MAX_COINS):
         coin: address = self.pool_data[_pool].coins[i]
         if i == n_coins:
@@ -395,6 +450,9 @@ def get_coin_indices(
     @param _to Coin address to be used as `j` within a pool
     @return int128 `i`, int128 `j`, boolean indicating if `i` and `j` are underlying coins
     """
+    if self.pool_data[_pool].n_coins == 0:
+        return self.factory.get_coin_indices(_pool, _from, _to)
+
     result: uint256[3] = self._get_coin_indices(_pool, _from, _to)
     return convert(result[0], int128), convert(result[1], int128), result[2] > 0
 
@@ -407,7 +465,9 @@ def is_meta(_pool: address) -> bool:
     @param _pool Pool address
     @return True if `_pool` is a metapool
     """
-    return self.pool_data[_pool].base_pool != ZERO_ADDRESS
+    if self.pool_data[_pool].base_pool != ZERO_ADDRESS:
+        return True
+    return self.factory.is_meta(_pool)
 
 
 @view
@@ -418,7 +478,10 @@ def get_pool_asset_type(_pool: address) -> uint256:
     @param _pool Pool Address
     @return The asset type as an unstripped string
     """
-    return self.pool_data[_pool].asset_type
+    asset_type: uint256 = self.pool_data[_pool].asset_type
+    if asset_type == 0:
+        return self.factory.get_pool_asset_type(_pool)
+    return asset_type
 
 
 # internal functionality used in admin setters
@@ -525,6 +588,7 @@ def _remove_market(_pool: address, _coina: address, _coinb: address):
 
 
 # admin functions
+# TODO adjust add_pool
 
 @external
 def add_pool(
