@@ -47,7 +47,7 @@ interface Factory:
     def get_underlying_decimals(_pool: address) -> uint256[MAX_COINS]: view
     def get_balances(_pool: address) -> uint256[MAX_COINS]: view
     def get_underlying_balances(_pool: address) -> uint256[MAX_COINS]: view
-    def get_pool_from_lp_token(_token: address) -> address: view
+    def _get_pool_from_lp_token(_token: address) -> address: view
     def get_admin_balances(_pool: address) -> uint256[MAX_COINS]: view
     def get_coin_indices(
         _pool: address,
@@ -56,6 +56,10 @@ interface Factory:
     ) -> (int128, int128, bool): view
     def is_meta(_pool: address) -> bool: view
     def get_pool_asset_type(_pool: address) -> uint256: view
+    def pool_list(i: uint256) -> address: view
+    def pool_count() -> uint256: view
+    def get_pool_from_lp_token(_token: address) -> address: view
+    def get_lp_token(_pool: address) -> address: view
 
 
 event PoolAdded:
@@ -65,16 +69,16 @@ event PoolRemoved:
     pool: indexed(address)
 
 
-pool_list: public(address[65536])   # master list of pools
-pool_count: public(uint256)         # actual length of pool_list
+_pool_list: address[65536]   # master list of pools
+_pool_count: uint256         # actual length of pool_list
 
 pool_data: HashMap[address, PoolArray]
 
 # lp token -> pool
-get_pool_from_lp_token: public(HashMap[address, address])
+_get_pool_from_lp_token: HashMap[address, address]
 
 # pool -> lp token
-get_lp_token: public(HashMap[address, address])
+_get_lp_token: HashMap[address, address]
 
 # mapping of coins -> pools for trading
 # a mapping key is generated for each pair of addresses via
@@ -82,7 +86,6 @@ get_lp_token: public(HashMap[address, address])
 markets: HashMap[uint256, address[65536]]
 market_counts: HashMap[uint256, uint256]
 
-last_updated: public(uint256)
 owner: public(address)
 factory: public(Factory)
 
@@ -130,7 +133,7 @@ def _get_balances(_pool: address) -> uint256[MAX_COINS]:
 @internal
 def _get_meta_underlying_balances(_pool: address, _base_pool: address) -> uint256[MAX_COINS]:
     base_coin_idx: uint256 = shift(self.pool_data[_pool].n_coins, -128) - 1
-    base_total_supply: uint256 = ERC20(self.get_lp_token[_base_pool]).totalSupply()
+    base_total_supply: uint256 = ERC20(self._get_lp_token[_base_pool]).totalSupply()
 
     underlying_balances: uint256[MAX_COINS] = empty(uint256[MAX_COINS])
     ul_balance: uint256 = 0
@@ -210,6 +213,39 @@ def _get_coin_indices(
 
 
 # targetted external getters, optimized for on-chain calls
+
+@view
+@external
+def pool_list(i: uint256) -> address:
+    count: uint256 = self._pool_count
+    if i >= count:
+        return self.factory.pool_list(i - count)
+    return self._pool_list[i]
+
+
+@view
+@external
+def pool_count() -> uint256:
+    return self._pool_count + self.factory.pool_count()
+
+
+@view
+@external
+def get_pool_from_lp_token(_token: address) -> address:
+    pool: address = self._get_pool_from_lp_token[_token]
+    if pool == ZERO_ADDRESS:
+        return self.factory.get_pool_from_lp_token(_token)
+    return pool
+
+
+@view
+@external
+def get_lp_token(_pool: address) -> address:
+    token: address = self._get_lp_token[_pool]
+    if token == ZERO_ADDRESS:
+        return self.factory.get_lp_token(_pool)
+    return token
+
 
 @view
 @external
@@ -388,9 +424,9 @@ def get_virtual_price_from_lp_token(_token: address) -> uint256:
     @param _token LP token address
     @return uint256 Virtual price
     """
-    pool: address = self.get_pool_from_lp_token[_token]
+    pool: address = self._get_pool_from_lp_token[_token]
     if pool == ZERO_ADDRESS:
-        pool = self.factory.get_pool_from_lp_token(_token)
+        pool = self.factory._get_pool_from_lp_token(_token)
     return CurvePool(pool).get_virtual_price()
 
 
@@ -496,19 +532,18 @@ def _add_pool(
     assert _sender == self.owner
     assert _lp_token != ZERO_ADDRESS
     assert self.pool_data[_pool].coins[0] == ZERO_ADDRESS  # dev: pool exists
-    assert self.get_pool_from_lp_token[_lp_token] == ZERO_ADDRESS
+    assert self._get_pool_from_lp_token[_lp_token] == ZERO_ADDRESS
 
     # add pool to pool_list
-    length: uint256 = self.pool_count
-    self.pool_list[length] = _pool
-    self.pool_count = length + 1
+    length: uint256 = self._pool_count
+    self._pool_list[length] = _pool
+    self._pool_count = length + 1
     self.pool_data[_pool].location = length
     self.pool_data[_pool].n_coins = _n_coins
 
     # update public mappings
-    self.get_pool_from_lp_token[_lp_token] = _pool
-    self.get_lp_token[_pool] = _lp_token
-    self.last_updated = block.timestamp
+    self._get_pool_from_lp_token[_lp_token] = _pool
+    self._get_lp_token[_pool] = _lp_token
 
     log PoolAdded(_pool)
 
@@ -706,22 +741,22 @@ def remove_pool(_pool: address):
     assert self.pool_data[_pool].coins[0] != ZERO_ADDRESS  # dev: pool does not exist
 
 
-    self.get_pool_from_lp_token[self.get_lp_token[_pool]] = ZERO_ADDRESS
-    self.get_lp_token[_pool] = ZERO_ADDRESS
+    self._get_pool_from_lp_token[self._get_lp_token[_pool]] = ZERO_ADDRESS
+    self._get_lp_token[_pool] = ZERO_ADDRESS
 
     # remove _pool from pool_list
     location: uint256 = self.pool_data[_pool].location
-    length: uint256 = self.pool_count - 1
+    length: uint256 = self._pool_count - 1
 
     if location < length:
         # replace _pool with final value in pool_list
-        addr: address = self.pool_list[length]
-        self.pool_list[location] = addr
+        addr: address = self._pool_list[length]
+        self._pool_list[location] = addr
         self.pool_data[addr].location = location
 
     # delete final pool_list value
-    self.pool_list[length] = ZERO_ADDRESS
-    self.pool_count = length
+    self._pool_list[length] = ZERO_ADDRESS
+    self._pool_count = length
 
     self.pool_data[_pool].underlying_decimals = 0
     self.pool_data[_pool].decimals = 0
@@ -765,7 +800,6 @@ def remove_pool(_pool: address):
                 self._remove_market(_pool, ucoin, ucoinx)
 
     self.pool_data[_pool].base_pool = ZERO_ADDRESS
-    self.last_updated = block.timestamp
     log PoolRemoved(_pool)
 
 
@@ -782,7 +816,6 @@ def set_pool_asset_type(_pool: address, _asset_type: uint256):
     assert msg.sender == self.owner
 
     self.pool_data[_pool].asset_type = _asset_type
-    self.last_updated = block.timestamp
 
 
 @external
@@ -799,4 +832,3 @@ def batch_set_pool_asset_type(_pools: address[32], _asset_types: uint256[32]):
         if _pools[i] == ZERO_ADDRESS:
             break
         self.pool_data[_pools[i]].asset_type = _asset_types[i]
-    self.last_updated = block.timestamp
