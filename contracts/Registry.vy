@@ -6,7 +6,6 @@
 
 MAX_COINS: constant(int128) = 8
 
-
 struct PoolArray:
     location: uint256
     decimals: uint256
@@ -624,7 +623,6 @@ def _remove_market(_pool: address, _coina: address, _coinb: address):
 
 
 # admin functions
-# TODO adjust add_pool
 
 @external
 def add_pool(
@@ -825,3 +823,9 @@ def batch_set_pool_asset_type(_pools: address[32], _asset_types: uint256[32]):
         if _pools[i] == ZERO_ADDRESS:
             break
         self.pool_data[_pools[i]].asset_type = _asset_types[i]
+
+
+@external
+def transfer_ownership(_new_owner: address):
+    assert msg.sender == self.owner
+    self.owner = _new_owner
