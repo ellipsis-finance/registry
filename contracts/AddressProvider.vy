@@ -1,6 +1,6 @@
-# @version 0.2.7
+# @version 0.3.1
 """
-@title Curve Registry Address Provider
+@title Ellipsis Registry Address Provider
 @license MIT
 @author Curve.Fi
 """
@@ -15,12 +15,11 @@ event AddressModified:
     new_address: address
     version: uint256
 
-event CommitNewAdmin:
-    deadline: indexed(uint256)
-    admin: indexed(address)
+event CommitNewOwner:
+    new_owner: indexed(address)
 
-event NewAdmin:
-    admin: indexed(address)
+event NewOwner:
+    owner: indexed(address)
 
 
 struct AddressInfo:
@@ -32,17 +31,16 @@ struct AddressInfo:
 
 
 registry: address
-admin: public(address)
-transfer_ownership_deadline: public(uint256)
-future_admin: public(address)
-
 queue_length: uint256
 get_id_info: public(HashMap[uint256, AddressInfo])
 
+owner: public(address)
+future_owner: public(address)
+
 
 @external
-def __init__(_admin: address):
-    self.admin = _admin
+def __init__():
+    self.owner = msg.sender
     self.queue_length = 1
     self.get_id_info[0].description = "Main Registry"
 
@@ -89,7 +87,7 @@ def add_new_id(_address: address, _description: String[64]) -> uint256:
     @param _description Human-readable description of the identifier
     @return uint256 identifier
     """
-    assert msg.sender == self.admin  # dev: admin-only function
+    assert msg.sender == self.owner  # dev: admin-only function
     assert _address.is_contract  # dev: not a contract
 
     id: uint256 = self.queue_length
@@ -115,7 +113,7 @@ def set_address(_id: uint256, _address: address) -> bool:
     @param _address Address to set
     @return bool success
     """
-    assert msg.sender == self.admin  # dev: admin-only function
+    assert msg.sender == self.owner  # dev: admin-only function
     assert _address.is_contract  # dev: not a contract
     assert self.queue_length > _id  # dev: id does not exist
 
@@ -143,7 +141,7 @@ def unset_address(_id: uint256) -> bool:
     @param _id Identifier to unset
     @return bool success
     """
-    assert msg.sender == self.admin  # dev: admin-only function
+    assert msg.sender == self.owner  # dev: admin-only function
     assert self.get_id_info[_id].is_active  # dev: not active
 
     self.get_id_info[_id].is_active = False
@@ -159,55 +157,15 @@ def unset_address(_id: uint256) -> bool:
 
 
 @external
-def commit_transfer_ownership(_new_admin: address) -> bool:
-    """
-    @notice Initiate a transfer of contract ownership
-    @dev Once initiated, the actual transfer may be performed three days later
-    @param _new_admin Address of the new owner account
-    @return bool success
-    """
-    assert msg.sender == self.admin  # dev: admin-only function
-    assert self.transfer_ownership_deadline == 0  # dev: transfer already active
-
-    deadline: uint256 = block.timestamp + 3*86400
-    self.transfer_ownership_deadline = deadline
-    self.future_admin = _new_admin
-
-    log CommitNewAdmin(deadline, _new_admin)
-
-    return True
+def commit_transfer_ownership(_new_owner: address):
+    assert msg.sender == self.owner  # dev: admin-only function
+    self.future_owner = _new_owner
+    log CommitNewOwner(_new_owner)
 
 
 @external
-def apply_transfer_ownership() -> bool:
-    """
-    @notice Finalize a transfer of contract ownership
-    @dev May only be called by the current owner, three days after a
-         call to `commit_transfer_ownership`
-    @return bool success
-    """
-    assert msg.sender == self.admin  # dev: admin-only function
-    assert self.transfer_ownership_deadline != 0  # dev: transfer not active
-    assert block.timestamp >= self.transfer_ownership_deadline  # dev: now < deadline
-
-    new_admin: address = self.future_admin
-    self.admin = new_admin
-    self.transfer_ownership_deadline = 0
-
-    log NewAdmin(new_admin)
-
-    return True
-
-
-@external
-def revert_transfer_ownership() -> bool:
-    """
-    @notice Revert a transfer of contract ownership
-    @dev May only be called by the current owner
-    @return bool success
-    """
-    assert msg.sender == self.admin  # dev: admin-only function
-
-    self.transfer_ownership_deadline = 0
-
-    return True
+def accept_transfer_ownership():
+    assert msg.sender == self.future_owner  # dev: admin-only function
+    self.owner = self.future_owner
+    self.future_owner = ZERO_ADDRESS
+    log NewOwner(msg.sender)
