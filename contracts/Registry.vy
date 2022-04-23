@@ -17,6 +17,9 @@ struct PoolArray:
     asset_type: uint256
 
 
+interface AddressProvider:
+    def owner() -> address: view
+
 interface ERC20:
     def balanceOf(_addr: address) -> uint256: view
     def decimals() -> uint256: view
@@ -84,15 +87,16 @@ _get_lp_token: HashMap[address, address]
 markets: HashMap[uint256, address[65536]]
 market_counts: HashMap[uint256, uint256]
 
-owner: public(address)
+address_provider: public(AddressProvider)
 factory: public(Factory)
 
+
 @external
-def __init__(_factory: Factory):
+def __init__(_address_provider: AddressProvider, _factory: Factory):
     """
     @notice Constructor function
     """
-    self.owner = msg.sender
+    self.address_provider = _address_provider
     self.factory = _factory
 
 
@@ -527,7 +531,7 @@ def _add_pool(
     _n_coins: uint256,
     _lp_token: address,
 ):
-    assert _sender == self.owner
+    assert _sender == self.address_provider.owner()
     assert _lp_token != ZERO_ADDRESS
     assert self.pool_data[_pool].coins[0] == ZERO_ADDRESS, "Pool already added"
     assert self._get_pool_from_lp_token[_lp_token] == ZERO_ADDRESS, "LP token already added"
@@ -728,7 +732,7 @@ def remove_pool(_pool: address):
     @dev Only callable by admin
     @param _pool Pool address to remove
     """
-    assert msg.sender == self.owner
+    assert msg.sender == self.address_provider.owner()
     assert self.pool_data[_pool].coins[0] != ZERO_ADDRESS  # dev: pool does not exist
 
 
@@ -804,7 +808,7 @@ def set_pool_asset_type(_pool: address, _asset_type: uint256):
     @param _pool Pool address
     @param _asset_type String of asset type
     """
-    assert msg.sender == self.owner
+    assert msg.sender == self.address_provider.owner()
 
     self.pool_data[_pool].asset_type = _asset_type
 
@@ -817,15 +821,9 @@ def batch_set_pool_asset_type(_pools: address[32], _asset_types: uint256[32]):
         performing some computation for no reason. Pool's don't necessarily
         change once they are deployed.
     """
-    assert msg.sender == self.owner
+    assert msg.sender == self.address_provider.owner()
 
     for i in range(32):
         if _pools[i] == ZERO_ADDRESS:
             break
         self.pool_data[_pools[i]].asset_type = _asset_types[i]
-
-
-@external
-def transfer_ownership(_new_owner: address):
-    assert msg.sender == self.owner
-    self.owner = _new_owner
