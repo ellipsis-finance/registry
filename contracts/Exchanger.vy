@@ -45,7 +45,7 @@ event TokenExchange:
 
 
 ETH_ADDRESS: constant(address) = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE
-MAX_COINS: constant(int128) = 8
+MAX_COINS: constant(int128) = 4
 EMPTY_POOL_LIST: constant(address[8]) = [
     ZERO_ADDRESS,
     ZERO_ADDRESS,
@@ -58,10 +58,8 @@ EMPTY_POOL_LIST: constant(address[8]) = [
 ]
 
 
-address_provider: AddressProvider
-
+address_provider: public(AddressProvider)
 is_killed: public(bool)
-pool_calculator: HashMap[address, address]
 
 is_approved: HashMap[address, HashMap[address, bool]]
 

@@ -4,7 +4,7 @@
 @license MIT
 """
 
-MAX_COINS: constant(int128) = 8
+MAX_COINS: constant(int128) = 4
 
 struct PoolArray:
     location: uint256
