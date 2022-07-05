@@ -1,4 +1,4 @@
-# @version 0.3.1
+# @version 0.3.3
 """
 @title Ellipsis Registry Exchange Contract
 @license MIT
@@ -99,12 +99,32 @@ def _get_exchange_amount(
     i: int128 = 0
     j: int128 = 0
     is_underlying: bool = False
+    success: bool = False
+    response: Bytes[32] = b""
+
     i, j, is_underlying = Registry(_registry).get_coin_indices(_pool, _from, _to) # dev: no market
 
     if is_underlying:
-        return CurvePool(_pool).get_dy_underlying(i, j, _amount)
+        success, response = raw_call(
+            _pool,
+            _abi_encode(i, j, _amount, method_id=method_id("get_dy_underlying(int128,int128,uint256)")),
+            is_static_call=True,
+            max_outsize=32,
+            revert_on_failure=False,
+        )
+    else:
+        success, response = raw_call(
+            _pool,
+            _abi_encode(i, j, _amount, method_id=method_id("get_dy(int128,int128,uint256)")),
+            is_static_call=True,
+            max_outsize=32,
+            revert_on_failure=False,
+        )
 
-    return CurvePool(_pool).get_dy(i, j, _amount)
+    if success:
+        return convert(response, uint256)
+    else:
+        return 0
 
 
 @internal
