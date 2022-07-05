@@ -162,12 +162,7 @@ def _exchange(
     else:
         response: Bytes[32] = raw_call(
             _from,
-            concat(
-                method_id("transferFrom(address,address,uint256)"),
-                convert(_sender, bytes32),
-                convert(self, bytes32),
-                convert(_amount, bytes32),
-            ),
+            _abi_encode(_sender, self, _amount, method_id=method_id("transferFrom(address,address,uint256)")),
             max_outsize=32,
         )
         if len(response) != 0:
@@ -177,11 +172,7 @@ def _exchange(
     if not self.is_approved[_from][_pool]:
         response: Bytes[32] = raw_call(
             _from,
-            concat(
-                method_id("approve(address,uint256)"),
-                convert(_pool, bytes32),
-                convert(MAX_UINT256, bytes32),
-            ),
+            _abi_encode(_pool, MAX_UINT256, method_id=method_id("approve(address,uint256)")),
             max_outsize=32,
         )
         if len(response) != 0:
@@ -202,11 +193,7 @@ def _exchange(
         received_amount = ERC20(_to).balanceOf(self) - initial_balance
         response: Bytes[32] = raw_call(
             _to,
-            concat(
-                method_id("transfer(address,uint256)"),
-                convert(_receiver, bytes32),
-                convert(received_amount, bytes32),
-            ),
+            _abi_encode(_receiver, received_amount, method_id=method_id("transfer(address,uint256)")),
             max_outsize=32,
         )
         if len(response) != 0:
@@ -357,11 +344,7 @@ def claim_balance(_token: address) -> bool:
         amount: uint256 = ERC20(_token).balanceOf(self)
         response: Bytes[32] = raw_call(
             _token,
-            concat(
-                method_id("transfer(address,uint256)"),
-                convert(msg.sender, bytes32),
-                convert(amount, bytes32),
-            ),
+            _abi_encode(msg.sender, amount, method_id=method_id("transfer(address,uint256)")),
             max_outsize=32,
         )
         if len(response) != 0:
