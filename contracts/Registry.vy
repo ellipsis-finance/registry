@@ -6,7 +6,7 @@
         not deployed by one of the active factories
 """
 
-MAX_COINS: constant(int128) = 4
+MAX_COINS: constant(uint256) = 4
 
 
 struct PoolArray:
@@ -86,7 +86,7 @@ def _unpack_decimals(_packed: uint256, _n_coins: uint256) -> uint256[MAX_COINS]:
     # the packed value is stored as uint256 to simplify unpacking via shift and modulo
     decimals: uint256[MAX_COINS] = empty(uint256[MAX_COINS])
     n_coins: int128 = convert(_n_coins, int128)
-    for i in range(MAX_COINS):
+    for i in range(4):
         if i == n_coins:
             break
         decimals[i] = shift(_packed, -8 * i) % 256
@@ -498,7 +498,7 @@ def _get_new_pool_decimals(_coins: address[MAX_COINS], _n_coins: uint256) -> uin
     value: uint256 = 0
 
     n_coins: int128 = convert(_n_coins, int128)
-    for i in range(MAX_COINS):
+    for i in range(4):
         if i == n_coins:
             break
         coin: address = _coins[i]
@@ -711,7 +711,7 @@ def set_pool_asset_type(_pool: address, _asset_type: uint256):
     @param _pool Pool address
     @param _asset_type String of asset type
     """
-    assert msg.sender == self.owner
+    assert msg.sender == self.address_provider.owner()
 
     self.pool_data[_pool].asset_type = _asset_type
     self.last_updated = block.timestamp
@@ -725,7 +725,7 @@ def batch_set_pool_asset_type(_pools: address[32], _asset_types: uint256[32]):
         performing some computation for no reason. Pool's don't necessarily
         change once they are deployed.
     """
-    assert msg.sender == self.owner
+    assert msg.sender == self.address_provider.owner()
 
     for i in range(32):
         if _pools[i] == ZERO_ADDRESS:
