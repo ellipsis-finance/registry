@@ -1,4 +1,4 @@
-# @version 0.3.4
+# @version 0.3.3
 """
 @title Ellipsis Registry
 @license MIT
@@ -56,15 +56,13 @@ def __init__(_address_provider: AddressProvider, _registries: DynArray[Registry,
     self.registries = _registries
 
 
-# targetted external getters, optimized for on-chain calls
-
 @view
 @external
 def pool_list(i: uint256) -> address:
     offset: uint256 = 0
     for registry in self.registries:
         count: uint256 = registry.pool_count()
-        if count + offset < i:
+        if count + offset > i:
             return registry.pool_list(i - offset)
         offset += count
 
@@ -116,7 +114,7 @@ def find_pool_for_coins(_from: address, _to: address, i: uint256 = 0) -> address
     offset: uint256 = 0
     for registry in self.registries:
         count: uint256 = registry.get_market_count(_from, _to)
-        if count + offset < i:
+        if count + offset > i:
             return registry.find_pool_for_coins(_from, _to, i - offset)
         offset += count
     return ZERO_ADDRESS
