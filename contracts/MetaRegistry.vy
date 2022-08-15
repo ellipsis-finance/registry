@@ -102,6 +102,15 @@ def get_lp_token(_pool: address) -> address:
 
 @view
 @external
+def get_market_count(_from: address, _to: address) -> uint256:
+    total: uint256 = 0
+    for registry in self.registries:
+        total += registry.get_market_count(_from, _to)
+    return total
+
+
+@view
+@external
 def find_pool_for_coins(_from: address, _to: address, i: uint256 = 0) -> address:
     """
     @notice Find an available pool for exchanging two coins
