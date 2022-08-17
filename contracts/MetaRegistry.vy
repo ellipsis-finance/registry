@@ -240,12 +240,11 @@ def get_balances(_pool: address) -> uint256[MAX_COINS]:
     @param _pool Pool address
     @return uint256 list of balances
     """
-    balances: uint256[MAX_COINS] = empty(uint256[MAX_COINS])
     for registry in self.registries:
-        balances = registry.get_balances(_pool)
-        if balances[0] != 0:
-            break
-    return balances
+        if registry.get_lp_token(_pool) != ZERO_ADDRESS:
+            return registry.get_balances(_pool)
+
+    return empty(uint256[MAX_COINS])
 
 
 @view
